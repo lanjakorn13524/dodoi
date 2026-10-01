@@ -47,3 +47,5 @@ src/lib/google-calendar.ts # sync Google Calendar ผ่าน OAuth
 - เดิมใช้ **SQLite (better-sqlite3)** → ย้ายมา **Firestore (Firestore)** ทั้งหมดแล้ว (ไม่มี `@/lib/db`, ไม่มี `db.prepare` เหลือใน code)
 - ระบบ auth (session) ยังทำงานเหมือนเดิม แต่ข้อมูล session/user/bookings เก็บใน Firestore collection (`users`, `sessions`, `bookings`, `rooms`, `customers`, `settings`, `counters`)
 - Google Calendar sync ใช้ OAuth (client id/secret ตั้งที่หน้า `/settings`) — หลังลิงก์จะ sync booking → all-day event
+
+# dodo
