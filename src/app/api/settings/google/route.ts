@@ -4,12 +4,13 @@ import {
   setAutoSync,
   isGoogleConfigured,
   isGoogleLinked,
+  checkGoogleToken,
   SETTING_KEYS,
 } from "@/lib/google-calendar";
 import { getSetting, setSetting } from "@/lib/firebase";
 import { requireAdmin } from "@/lib/auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const admin = await requireAdmin();
   if (!admin)
     return NextResponse.json({ error: "ไม่มีสิทธิ์เข้าถึง" }, { status: 403 });
@@ -26,14 +27,26 @@ export async function GET() {
       getSetting(SETTING_KEYS.linkedEmail),
     ]);
 
+  let tokenOk = false;
+  let tokenError = "";
+  if (linked) {
+    try {
+      await checkGoogleToken();
+      tokenOk = true;
+    } catch (err) {
+      tokenError = err instanceof Error ? err.message : "ตรวจสอบ token ไม่สำเร็จ";
+    }
+  }
+
   return NextResponse.json({
     configured,
     linked,
+    tokenOk,
+    tokenError,
     autoSync,
     clientId: clientId ?? "",
     hasClientSecret: Boolean(clientSecret),
-    redirectUri:
-      redirectUri || `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/settings/google/callback`,
+    redirectUri: redirectUri || `${new URL(req.url).origin}/api/settings/google/callback`,
     calendarId: calendarId ?? "primary",
     linkedEmail: linkedEmail ?? "",
   });

@@ -15,6 +15,8 @@ import { useAuth } from "@/components/auth-context";
 const defaultGoogleState: GoogleState = {
   configured: false,
   linked: false,
+  tokenOk: false,
+  tokenError: "",
   autoSync: true,
   clientId: "",
   calendarId: "primary",
@@ -71,6 +73,8 @@ function GoogleSection() {
         ...data,
         configured: Boolean(data.configured),
         linked: Boolean(data.linked),
+        tokenOk: Boolean(data.tokenOk),
+        tokenError: String(data.tokenError ?? ""),
         autoSync: Boolean(data.autoSync),
         clientId: String(data.clientId ?? ""),
         calendarId: String(data.calendarId ?? "primary"),
@@ -230,6 +234,10 @@ function GoogleSection() {
               <label className="block text-sm font-medium text-slate-700">
                 Authorized Redirect URI
                 <input className={inputCls + " mt-1"} value={redirectUri} onChange={(e) => setRedirectUri(e.target.value)} />
+                <span className="mt-1 block text-xs font-normal text-slate-500">
+                  ต้องเป็น <code>/api/settings/google/callback</code> ของโดเมนนี้ และต้องตรงกับ Authorized redirect URIs
+                  ใน Google Cloud Console แบบเป๊ะ ๆ
+                </span>
               </label>
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -278,7 +286,21 @@ function GoogleSection() {
             </p>
           </div>
           <div className="md:col-span-2">
-            {safeState.linked ? (
+            {safeState.linked && !safeState.tokenOk ? (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-amber-900">
+                  <span className="size-2 rounded-full bg-amber-500" />
+                  เชื่อมต่ออยู่ แต่ใช้ซิงค์ไม่ได้
+                </div>
+                <p className="mt-1 text-xs leading-5 text-amber-800">
+                  {safeState.tokenError || "token ของ Google หมดอายุหรือถูกยกเลิก"}
+                </p>
+                <p className="mt-2 text-xs leading-5 text-amber-800">
+                  ถ้าเพิ่งย้าย consent screen จาก Testing เป็น In production ต้องกด “เชื่อมต่อ Google Calendar”
+                  ใหม่อีกครั้ง ไม่งั้น token จะหมดอายุทุก 7 วัน
+                </p>
+              </div>
+            ) : safeState.linked ? (
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-emerald-800">
                   <span className="size-2 rounded-full bg-emerald-500" />
@@ -393,6 +415,8 @@ function GoogleSection() {
 interface GoogleState {
   configured: boolean;
   linked: boolean;
+  tokenOk: boolean;
+  tokenError: string;
   autoSync: boolean;
   clientId: string;
   calendarId: string;

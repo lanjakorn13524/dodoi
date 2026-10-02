@@ -14,8 +14,20 @@ export const SETTING_KEYS = {
   autoSync: "google_auto_sync",
 } as const;
 
-function getAppRedirectUri() {
-  return `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/settings`;
+/** หลังผ่าน OAuth เสร็จให้กลับไปหน้าตั้งค่าของโดเมนที่ผู้ใช้กำลังใช้อยู่ */
+export function settingsRedirectUrl(origin: string): string {
+  return `${origin}/settings`;
+}
+
+/** ข้อความ error จาก Google ที่อ่านรู้เรื่อง (ดึงจาก response ถ้ามี) */
+function describeGoogleError(err: unknown): string {
+  if (err && typeof err === "object") {
+    const e = err as { response?: { data?: { error_description?: string; error?: string } }; message?: string };
+    const detail = e.response?.data?.error_description ?? e.response?.data?.error;
+    if (detail) return detail;
+    if (e.message) return e.message;
+  }
+  return "ไม่ทราบสาเหตุ";
 }
 
 export async function getAutoSync(): Promise<boolean> {
@@ -37,14 +49,22 @@ export async function isGoogleLinked(): Promise<boolean> {
   return Boolean(await getSetting(SETTING_KEYS.tokens));
 }
 
+/** token ที่บันทึกไว้ใช้ไม่ได้แล้ว — ต้องให้ผู้ใช้กดเชื่อมต่อ Google ใหม่ */
+export class GoogleTokenError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GoogleTokenError";
+  }
+}
+
 async function makeOAuth() {
   const clientId = (await getSetting(SETTING_KEYS.clientId)) || process.env.GOOGLE_CLIENT_ID;
   const clientSecret = (await getSetting(SETTING_KEYS.clientSecret)) || process.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri =
-    (await getSetting(SETTING_KEYS.redirectUri)) ||
-    process.env.GOOGLE_REDIRECT_URI ||
-    `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/settings/google/callback`;
-  return new google.auth.OAuth2(clientId!, clientSecret!, redirectUri);
+  const redirectUri = (await getSetting(SETTING_KEYS.redirectUri)) || process.env.GOOGLE_REDIRECT_URI;
+  if (!clientId || !clientSecret) throw new GoogleTokenError("ยังไม่ได้ตั้ง Google Client ID / Secret");
+  if (!redirectUri)
+    throw new GoogleTokenError("ยังไม่ได้ตั้ง Authorized Redirect URI — กรอกที่หน้าตั้งค่าแล้วบันทึก");
+  return new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 }
 
 async function resolveCalendarId(oauth: InstanceType<typeof google.auth.OAuth2>, configuredId?: string) {
@@ -83,10 +103,6 @@ export async function getAuthUrl(): Promise<string> {
   });
 }
 
-export function getGoogleAppRedirectUri() {
-  return getAppRedirectUri();
-}
-
 export async function completeAuth(code: string) {
   const oauth = await makeOAuth();
   const { tokens } = await oauth.getToken(code);
@@ -118,14 +134,37 @@ export async function clearAuth() {
 }
 
 async function loadToken() {
+  const raw = await getSetting(SETTING_KEYS.tokens);
+  if (!raw) throw new GoogleTokenError("ยังไม่ได้เชื่อมต่อ Google Calendar — กด “เชื่อมต่อ Google Calendar” ที่หน้าตั้งค่า");
+
+  let saved: Record<string, unknown>;
+  try {
+    saved = JSON.parse(raw);
+  } catch {
+    throw new GoogleTokenError("token ที่บันทึกไว้อ่านไม่ได้ — ต้องเชื่อมต่อ Google Calendar ใหม่");
+  }
+  if (!saved.refresh_token)
+    throw new GoogleTokenError("token ไม่มี refresh_token — ต้องเชื่อมต่อ Google Calendar ใหม่");
+
   const oauth = await makeOAuth();
-  const savedTokens = JSON.parse((await getSetting(SETTING_KEYS.tokens))!);
-  oauth.setCredentials(savedTokens);
-  const refreshed = await oauth.refreshAccessToken();
-  const tokens = { ...savedTokens, ...refreshed.credentials };
+  oauth.setCredentials(saved);
+
+  let refreshed;
+  try {
+    refreshed = await oauth.refreshAccessToken();
+  } catch (err) {
+    throw new GoogleTokenError(`Google ไม่ยอมให้ใช้ token นี้แล้ว (${describeGoogleError(err)}) — ต้องเชื่อมต่อ Google Calendar ใหม่`);
+  }
+
+  const tokens = { ...saved, ...refreshed.credentials };
   await setSetting(SETTING_KEYS.tokens, JSON.stringify(tokens));
   oauth.setCredentials(tokens);
   return oauth;
+}
+
+/** ใช้ตรวจสถานะ token ในหน้าตั้งค่า — โยน GoogleTokenError ถ้าใช้ไม่ได้แล้ว */
+export async function checkGoogleToken(): Promise<void> {
+  await loadToken();
 }
 
 export interface SyncResult {

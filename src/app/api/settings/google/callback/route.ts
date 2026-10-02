@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { completeAuth, getGoogleAppRedirectUri } from "@/lib/google-calendar";
+import { completeAuth, settingsRedirectUrl } from "@/lib/google-calendar";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
   const error = req.nextUrl.searchParams.get("error");
-  const redirectUri = getGoogleAppRedirectUri();
+  const redirectUri = settingsRedirectUrl(req.nextUrl.origin);
 
   if (error || !code) {
     return NextResponse.redirect(
