@@ -1,5 +1,4 @@
 import { getDb, nextId, nowLocal } from "./firebase";
-import { ROOM_PALETTE } from "./room-colors";
 import { hashPassword } from "./password";
 import type { BookingStatus } from "./status";
 
@@ -60,24 +59,10 @@ export interface CustomerRow {
 
 let seeded = false;
 
-/** ใส่ข้อมูลเริ่มต้น (ห้อง + บัญชี admin) ครั้งเดียว */
+/** สร้างบัญชี admin ครั้งแรกเท่านั้น — ห้องพักไม่ seed แล้ว ให้เพิ่มเองที่หน้าห้องพัก */
 export async function ensureSeed() {
   if (seeded) return;
   const db = getDb();
-  const roomsSnap = await db.collection("rooms").limit(1).get();
-  if (roomsSnap.empty) {
-    const names = ["101", "102", "103", "201", "202", "V1", "V2"];
-    for (const [i, name] of names.entries()) {
-      const id = await nextId("rooms");
-      const color = ROOM_PALETTE[i % ROOM_PALETTE.length];
-      await db.collection("rooms").doc(String(id)).set({
-        id,
-        name,
-        is_active: true,
-        color,
-      });
-    }
-  }
   const adminSnap = await db
     .collection("users")
     .where("email", "==", "admin@hotel.local")
