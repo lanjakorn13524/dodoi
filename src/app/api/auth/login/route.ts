@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookieOptions, login } from "@/lib/auth";
+import { FirebaseConfigError } from "@/lib/firebase";
 
 export async function POST(req: Request) {
   try {
@@ -16,7 +17,10 @@ export async function POST(req: Request) {
     const res = NextResponse.json({ user: result.user });
     res.cookies.set("hotel_session", result.token, cookieOptions());
     return res;
-  } catch {
+  } catch (err) {
+    console.error("[auth/login]", err);
+    if (err instanceof FirebaseConfigError)
+      return NextResponse.json({ error: err.message }, { status: 503 });
     return NextResponse.json({ error: "เกิดข้อผิดพลาด" }, { status: 500 });
   }
 }

@@ -1,33 +1,62 @@
-import { cert, getApps, initializeApp, type ServiceAccount } from "firebase-admin/app";
+import { existsSync } from "node:fs";
+import {
+  applicationDefault,
+  cert,
+  getApps,
+  initializeApp,
+  type Credential,
+} from "firebase-admin/app";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
 let dbInstance: Firestore | null = null;
 
-function loadServiceAccount(): ServiceAccount | undefined {
-  if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
-    return {
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    };
+/** ตั้งค่า credential ไม่ครบบนเซิร์ฟเวอร์ (คนละเรื่องกับ Firestore ล่ม/สิทธิ์ไม่พอ) */
+export class FirebaseConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FirebaseConfigError";
   }
-  return undefined;
 }
 
-/** เรียก firestore (Admin SDK) ระบบจะลอง initial ด้วย env หลายแบบ */
+function credentialFromEnv(): Credential {
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const missing: string[] = [];
+  if (!process.env.FIREBASE_PROJECT_ID) missing.push("FIREBASE_PROJECT_ID");
+  if (!process.env.FIREBASE_CLIENT_EMAIL) missing.push("FIREBASE_CLIENT_EMAIL");
+  if (!privateKey) missing.push("FIREBASE_PRIVATE_KEY");
+
+  if (missing.length === 0 && privateKey?.includes("PRIVATE KEY")) {
+    return cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey,
+    });
+  }
+
+  const adc = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (adc) {
+    if (!existsSync(adc)) {
+      throw new FirebaseConfigError(
+        `GOOGLE_APPLICATION_CREDENTIALS ชี้ไฟล์ที่ไม่มีบนเครื่องนี้: ${adc} (path นี้ใช้ได้แค่ตอนรันในเครื่องตัวเอง)`
+      );
+    }
+    return applicationDefault();
+  }
+
+  if (missing.length === 0) {
+    throw new FirebaseConfigError("FIREBASE_PRIVATE_KEY รูปแบบไม่ถูกต้อง (ต้องมี -----BEGIN PRIVATE KEY-----)");
+  }
+  throw new FirebaseConfigError(
+    `ยังไม่ได้ตั้ง Firebase credential บนเซิร์ฟเวอร์ (ขาด: ${missing.join(", ")}) — ` +
+      `ตั้งใน Netlify → Environment variables แล้ว redeploy`
+  );
+}
+
+/** firestore (Admin SDK) — credential มาจาก env 3 ตัว หรือ ADC เฉพาะตอนรันในเครื่อง */
 export function getDb(): Firestore {
   if (dbInstance) return dbInstance;
   if (!getApps().length) {
-    const sa = loadServiceAccount();
-    if (sa) {
-      initializeApp({ credential: cert(sa) });
-    } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      // ใช้ service account file (Application Default Credentials)
-      initializeApp();
-    } else {
-      // ใช้ credentials จากตัวแปร env มาตรฐาน (หรือ emulator ที่ตั้งไว้)
-      initializeApp();
-    }
+    initializeApp({ credential: credentialFromEnv() });
   }
   dbInstance = getFirestore();
   return dbInstance;
