@@ -13,6 +13,6 @@ export async function PATCH(req: Request) {
   const body = await req.json();
   const name = String(body.name ?? "").trim();
   if (!name) return NextResponse.json({ error: "กรอกชื่อ" }, { status: 400 });
-  updateUserName(user.id, name);
+  await updateUserName(user.id, name);
   return NextResponse.json({ ok: true });
 }

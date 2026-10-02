@@ -7,7 +7,7 @@ export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "กรุณาเข้าสู่ระบบ" }, { status: 401 });
   const url = new URL(req.url);
-  const rows = listBookings({
+  const rows = await listBookings({
     q: url.searchParams.get("q") ?? undefined,
     from: url.searchParams.get("from") ?? undefined,
     to: url.searchParams.get("to") ?? undefined,
